@@ -1,0 +1,4 @@
+mode: spoken
+use_for: [presentations, interview answers, video scripts, voice generation]
+rules: [natural transitions, occasional fillers, natural repetition, conversational rhythm, simple sentences]
+avoid: essay-like writing read aloud
