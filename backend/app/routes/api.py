@@ -27,8 +27,14 @@ def get_service() -> ContentService:
     settings = get_settings()
     return ContentService(
         VoiceEngine(settings.voice_profile_dir, settings.voice_samples_dir),
-        LLMService(settings.openai_api_key, settings.openai_model)
+        LLMService(
+            gemini_api_key=settings.active_gemini_key,
+            gemini_model=settings.gemini_model,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model
+        )
     )
+
 
 
 def execute(request: ContentRequest, task: str, instruction: str | None = None) -> ContentResponse:
@@ -115,7 +121,16 @@ def fix_drift_in_guide(request: DriftFixRequest) -> dict:
 def voice_profile() -> VoiceProfileResponse:
     settings = get_settings()
     engine = VoiceEngine(settings.voice_profile_dir, settings.voice_samples_dir)
-    service = ContentService(engine, LLMService(settings.openai_api_key, settings.openai_model))
+    service = ContentService(
+        engine,
+        LLMService(
+            gemini_api_key=settings.active_gemini_key,
+            gemini_model=settings.gemini_model,
+            openai_api_key=settings.openai_api_key,
+            openai_model=settings.openai_model
+        )
+    )
+
     core = engine.load_core()
     modes = {mode: engine.load_mode(mode) for mode in ("casual", "professional", "technical", "spoken")}
     samples = engine.load_samples()

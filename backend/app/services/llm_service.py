@@ -3,22 +3,90 @@ from typing import Any
 
 
 class LLMService:
-    def __init__(self, api_key: str, model: str):
-        self.model = model
-        self.api_key = api_key
-        self.client = None
-        if api_key:
+    def __init__(
+        self,
+        gemini_api_key: str = "",
+        gemini_model: str = "gemini-2.5-flash",
+        openai_api_key: str = "",
+        openai_model: str = "gpt-4o-mini"
+    ):
+        self.gemini_api_key = gemini_api_key
+        self.gemini_model = gemini_model or "gemini-2.5-flash"
+        self.openai_api_key = openai_api_key
+        self.openai_model = openai_model or "gpt-4o-mini"
+        self.gemini_client = None
+        self.openai_client = None
+
+        # 1. Initialize Gemini Client if key provided
+        if self.gemini_api_key:
+            try:
+                from google import genai
+                self.gemini_client = genai.Client(api_key=self.gemini_api_key)
+            except Exception:
+                try:
+                    import google.generativeai as legacy_genai
+                    legacy_genai.configure(api_key=self.gemini_api_key)
+                    self.gemini_client = legacy_genai
+                except Exception:
+                    self.gemini_client = None
+
+        # 2. Initialize OpenAI Client as secondary option
+        if self.openai_api_key:
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=api_key)
+                self.openai_client = OpenAI(api_key=self.openai_api_key)
             except Exception:
-                self.client = None
+                self.openai_client = None
 
     def complete(self, messages: list[dict[str, str]], fallback_context: dict[str, Any] | None = None) -> str:
-        if self.client:
+        system_instruction = ""
+        user_content = ""
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_instruction = msg.get("content", "")
+            elif msg.get("role") == "user":
+                user_content = msg.get("content", "")
+
+        # Try Google Gemini first
+        if self.gemini_client and self.gemini_api_key:
             try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
+                # Check if it's the modern google-genai Client
+                if hasattr(self.gemini_client, "models"):
+                    from google.genai import types
+                    # Normalize model name for Gemini
+                    model_name = self.gemini_model
+                    if not model_name.startswith("gemini-"):
+                        model_name = "gemini-2.5-flash"
+                    
+                    config = types.GenerateContentConfig(
+                        system_instruction=system_instruction if system_instruction else None,
+                        temperature=0.7,
+                    )
+                    response = self.gemini_client.models.generate_content(
+                        model=model_name,
+                        contents=user_content,
+                        config=config
+                    )
+                    if response and response.text:
+                        return response.text.strip()
+                else:
+                    # Legacy google.generativeai fallback
+                    model_name = self.gemini_model if "gemini" in self.gemini_model else "gemini-1.5-flash"
+                    model = self.gemini_client.GenerativeModel(
+                        model_name=model_name,
+                        system_instruction=system_instruction if system_instruction else None
+                    )
+                    response = model.generate_content(user_content)
+                    if response and response.text:
+                        return response.text.strip()
+            except Exception as exc:
+                print(f"Gemini API attempt failed: {exc}")
+
+        # Try OpenAI if Gemini was not available or errored
+        if self.openai_client:
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model=self.openai_model,
                     messages=messages,
                     temperature=0.7,
                     max_tokens=1500
@@ -26,12 +94,12 @@ class LLMService:
                 res = (response.choices[0].message.content or "").strip()
                 if res:
                     return res
-            except Exception as e:
-                # If API quota exceeded or network fails, gracefully fall back to local voice engine synthesis
+            except Exception:
                 pass
 
-        # Fallback authentic voice generator matching Tanmay's specific patterns
+        # Fallback authentic voice synthesizer
         return self._synthesize_voice(fallback_context or {})
+
 
     def _synthesize_voice(self, ctx: dict[str, Any]) -> str:
         user_input = ctx.get("user_input", "").strip()

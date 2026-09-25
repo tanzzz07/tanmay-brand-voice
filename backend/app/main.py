@@ -21,7 +21,11 @@ app.include_router(router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "model": get_settings().openai_model}
+    settings = get_settings()
+    engine = "gemini" if settings.active_gemini_key else ("openai" if settings.openai_api_key else "offline_synthesizer")
+    model = settings.gemini_model if engine == "gemini" else settings.openai_model
+    return {"status": "ok", "engine": engine, "model": model}
+
 
 
 # Serve built frontend in production if dist directory exists
